@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Trek TNG: LCARS Actor Network</title>
+    
+    <!-- Tailwind CSS for layout utility -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Vis.js for Network Graphing -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <!-- Google Font for LCARS typography -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&display=swap');
+        
+        body {
+            background-color: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .lcars-font { font-family: 'Antonio', sans-serif; }
+        
+        /* Official LCARS Color Palette */
+        .bg-lcars-orange { background-color: #ff9900; }
+        .bg-lcars-peach { background-color: #ffcc99; }
+        .bg-lcars-blue { background-color: #99ccff; }
+        .bg-lcars-pink { background-color: #cc6699; }
+        .bg-lcars-red { background-color: #cc0000; }
+        
+        .text-lcars-orange { color: #ff9900; }
+        .text-lcars-peach { color: #ffcc99; }
+        .text-lcars-blue { color: #99ccff; }
+        .text-lcars-pink { color: #cc6699; }
+        .border-lcars-pink { border-color: #cc6699; }
+        .border-lcars-orange { border-color: #ff9900; }
+
+        /* Custom scrollbar matching the theme */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #000; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #ff9900; border-radius: 3px; }
+        
+        /* Ensures the vis-network canvas removes default outline */
+        .vis-network:focus { outline: none; }
+    </style>
+</head>
+<body class="flex h-screen bg-black p-4 lcars-font text-xl uppercase tracking-wider">
+
+    <!-- Left Column: LCARS Nav Bracket & Info Panel -->
+    <div class="w-[22rem] flex flex-col mr-4 flex-shrink-0">
+         <!-- Top left elbow -->
+         <div class="h-16 bg-lcars-orange rounded-tl-[2rem] text-right text-black font-bold text-3xl pr-4 pt-2 flex-shrink-0">LCARS 40274</div>
+         
+         <!-- Content area nestled in the bracket -->
+         <div class="flex-1 flex mt-4 mb-4 relative overflow-hidden">
+             <!-- Thick side rail with pill shapes -->
+             <div class="w-32 bg-lcars-peach flex flex-col justify-end p-2 pb-12 gap-3 items-end flex-shrink-0">
+                  <div class="w-16 h-10 bg-lcars-pink rounded-l-full"></div>
+                  <div class="w-24 h-10 bg-lcars-orange rounded-l-full"></div>
+                  <div class="w-20 h-10 bg-lcars-blue rounded-l-full mb-8"></div>
+                  <!-- Reset button -->
+                  <button onclick="window.network.fit({animation: true})" class="w-28 h-12 bg-lcars-red rounded-l-full text-black text-right pr-3 pt-1 hover:bg-red-400 transition-colors focus:outline-none flex-shrink-0">RESET VIEW</button>
+             </div>
+             
+             <!-- Dynamic Text panel embedded in crook -->
+             <div class="flex-1 pl-4 flex flex-col overflow-hidden">
+                  <!-- Default State -->
+                  <div id="default-panel" class="text-lcars-blue mt-4 text-2xl">
+                      Awaiting Input...<br>
+                      <span class="text-gray-500 text-sm font-sans normal-case tracking-normal">Select node to initialize biographical datastream.</span>
+                  </div>
+                  
+                  <!-- Active Data State -->
+                  <div id="info-panel" class="hidden flex-col h-full w-full">
+                       <div class="text-lcars-orange text-4xl mb-1 truncate" id="node-title">TITLE</div>
+                       <div class="text-black bg-lcars-blue inline-block px-2 py-0.5 rounded-full text-sm mb-4 self-start font-bold uppercase" id="node-type">TYPE</div>
+                       
+                       <div class="text-lcars-pink border-b border-lcars-pink mb-2 pb-1 text-lg" id="list-title">CROSS-REFERENCES</div>
+                       
+                       <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 font-sans normal-case tracking-normal text-sm text-gray-300 w-full">
+                           <ul id="node-details" class="space-y-4">
+                               <!-- Items dynamically injected here -->
+                           </ul>
+                       </div>
+                  </div>
+             </div>
+         </div>
+         
+         <!-- Bottom left elbow -->
+         <div class="h-16 bg-lcars-orange rounded-bl-[2rem] flex-shrink-0"></div>
+    </div>
+    
+    <!-- Right Column: Main Network Viewer Area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+         <!-- Top rail extending from top elbow -->
+         <div class="h-16 flex gap-4 flex-shrink-0">
+              <div class="flex-1 bg-lcars-orange"></div>
+              <div class="w-48 bg-lcars-pink rounded-r-full text-right text-black font-bold text-3xl pr-6 pt-2">NET-VIEW</div>
+         </div>
+         
+         <!-- Network Canvas Container -->
+         <div class="flex-1 relative mt-4 mb-4 border-t-2 border-b-2 border-lcars-orange/30 rounded-lg bg-[#0a0a0a] overflow-hidden">
+              <div id="network-container" class="absolute inset-0 z-0"></div>
+              
+              <!-- LCARS style Legend overlay inside network view -->
+              <div class="absolute bottom-4 right-4 text-right pointer-events-none z-10 bg-black/60 p-3 rounded backdrop-blur-sm border border-gray-800">
+                   <div class="text-lcars-orange text-lg border-b border-lcars-orange/50 mb-2">DATABASE LEGEND</div>
+                   <div class="flex items-center justify-end gap-3 text-sm font-sans text-gray-400 mb-2">
+                        <span class="uppercase tracking-widest text-xs">Personnel (Actor)</span>
+                        <div class="w-3.5 h-3.5 rounded-full bg-lcars-orange shadow-[0_0_8px_#ff9900]"></div>
+                   </div>
+                   <div class="flex items-center justify-end gap-3 text-sm font-sans text-gray-400 mb-2">
+                        <span class="uppercase tracking-widest text-xs">Starfleet Record (Trek)</span>
+                        <div class="w-3.5 h-3.5 transform rotate-45 bg-lcars-blue shadow-[0_0_8px_#99ccff]"></div>
+                   </div>
+                   <div class="flex items-center justify-end gap-3 text-sm font-sans text-gray-400">
+                        <span class="uppercase tracking-widest text-xs">External File (Other Media)</span>
+                        <div class="w-3.5 h-3.5 bg-lcars-pink shadow-[0_0_8px_#cc6699]"></div>
+                   </div>
+              </div>
+         </div>
+         
+         <!-- Bottom rail extending from bottom elbow -->
+         <div class="h-16 flex gap-4 flex-shrink-0">
+              <div class="flex-1 bg-lcars-orange"></div>
+              <div class="w-[28rem] bg-lcars-peach rounded-r-full text-right text-black pr-6 pt-3 text-2xl font-bold">ACCESS: AUTHORIZED</div>
+         </div>
+    </div>
+
+<script>
+    // 1. Define the Data (Expanded Roster)
+    const rawNodes = [
+        // === TNG Main & Recurring Actors ===
+        { id: 'PS', label: 'Patrick Stewart', group: 'actor', title: 'TNG: Captain Jean-Luc Picard' },
+        { id: 'JF', label: 'Jonathan Frakes', group: 'actor', title: 'TNG: Cmdr. William T. Riker' },
+        { id: 'LB', label: 'LeVar Burton', group: 'actor', title: 'TNG: Lt. Cmdr. Geordi La Forge' },
+        { id: 'MD', label: 'Michael Dorn', group: 'actor', title: 'TNG: Lt. Cmdr. Worf' },
+        { id: 'MS', label: 'Marina Sirtis', group: 'actor', title: 'TNG: Counselor Deanna Troi' },
+        { id: 'BS', label: 'Brent Spiner', group: 'actor', title: 'TNG: Lt. Cmdr. Data' },
+        { id: 'GM', label: 'Gates McFadden', group: 'actor', title: 'TNG: Dr. Beverly Crusher' },
+        { id: 'WW', label: 'Wil Wheaton', group: 'actor', title: 'TNG: Wesley Crusher' },
+        { id: 'DC', label: 'Denise Crosby', group: 'actor', title: 'TNG: Security Chief Tasha Yar' },
+        { id: 'CM', label: 'Colm Meaney', group: 'actor', title: 'TNG: Transporter Chief Miles O\'Brien' },
+        { id: 'WG', label: 'Whoopi Goldberg', group: 'actor', title: 'TNG: Guinan' },
+        { id: 'JL', label: 'John de Lancie', group: 'actor', title: 'TNG: Q' },
+        { id: 'MB', label: 'Majel Barrett', group: 'actor', title: 'TNG: Lwaxana Troi / Computer Voice' },
+        { id: 'DM', label: 'Diana Muldaur', group: 'actor', title: 'TNG: Dr. Katherine Pulaski' },
+
+        // === Star Trek Series ===
+        { id: 'TOS', label: 'The Original Series', group: 'trek' },
+        { id: 'DS9', label: 'Deep Space Nine', group: 'trek' },
+        { id: 'VOY', label: 'Voyager', group: 'trek' },
+        { id: 'ENT', label: 'Enterprise', group: 'trek' },
+        { id: 'PIC', label: 'Picard', group: 'trek' },
+        { id: 'LD', label: 'Lower Decks', group: 'trek' },
+        { id: 'PRO', label: 'Prodigy', group: 'trek' },
+
+        // === Other Notable Series/Movies ===
+        { id: 'GARG', label: 'Gargoyles', group: 'other', title: 'Disney cartoon featuring massive TNG cast overlaps' },
+        { id: 'AD', label: 'American Dad!', group: 'other' },
+        { id: 'XMEN', label: 'X-Men (Films)', group: 'other' },
+        { id: 'DUNE', label: 'Dune (1984)', group: 'other' },
+        { id: 'ROOTS', label: 'Roots', group: 'other' },
+        { id: 'BB', label: 'Beyond Belief', group: 'other' },
+        { id: 'RR', label: 'Reading Rainbow', group: 'other' },
+        { id: 'CHIPS', label: 'CHiPs', group: 'other' },
+        { id: 'TBBT', label: 'Big Bang Theory', group: 'other' },
+        { id: 'SBM', label: 'Stand By Me', group: 'other' },
+        { id: 'TWD', label: 'The Walking Dead', group: 'other' },
+        { id: 'ID4', label: 'Independence Day', group: 'other' },
+        { id: 'HOW', label: 'Hell on Wheels', group: 'other' },
+        { id: 'SA', label: 'Sister Act', group: 'other' },
+        { id: 'GH', label: 'Ghost', group: 'other' },
+        { id: 'BBAD', label: 'Breaking Bad', group: 'other' },
+        { id: 'SG1', label: 'Stargate SG-1', group: 'other' },
+        { id: 'MLP', label: 'My Little Pony', group: 'other' },
+        { id: 'EFC', label: 'Earth: Final Conflict', group: 'other' },
+        { id: 'BAB5', label: 'Babylon 5', group: 'other' }
+    ];
+
+    const rawEdges = [
+        // Patrick Stewart
+        { from: 'PS', to: 'PIC', label: 'Picard' },
+        { from: 'PS', to: 'DS9', label: 'Picard' },
+        { from: 'PS', to: 'AD', label: 'Avery Bullock' },
+        { from: 'PS', to: 'XMEN', label: 'Prof. Charles Xavier' },
+        { from: 'PS', to: 'DUNE', label: 'Gurney Halleck' },
+
+        // Jonathan Frakes
+        { from: 'JF', to: 'PIC', label: 'Riker' },
+        { from: 'JF', to: 'DS9', label: 'Thomas Riker' },
+        { from: 'JF', to: 'VOY', label: 'Riker' },
+        { from: 'JF', to: 'ENT', label: 'Riker' },
+        { from: 'JF', to: 'LD', label: 'Riker' },
+        { from: 'JF', to: 'GARG', label: 'David Xanatos' },
+        { from: 'JF', to: 'BB', label: 'Host' },
+
+        // LeVar Burton
+        { from: 'LB', to: 'PIC', label: 'Geordi' },
+        { from: 'LB', to: 'VOY', label: 'Geordi' },
+        { from: 'LB', to: 'GARG', label: 'Anansi' },
+        { from: 'LB', to: 'RR', label: 'Host' },
+        { from: 'LB', to: 'ROOTS', label: 'Kunta Kinte' },
+
+        // Michael Dorn
+        { from: 'MD', to: 'PIC', label: 'Worf' },
+        { from: 'MD', to: 'DS9', label: 'Worf (Main Cast)' },
+        { from: 'MD', to: 'GARG', label: 'Coldstone / Taurus' },
+        { from: 'MD', to: 'CHIPS', label: 'Officer Turner' },
+
+        // Marina Sirtis
+        { from: 'MS', to: 'PIC', label: 'Troi' },
+        { from: 'MS', to: 'VOY', label: 'Troi' },
+        { from: 'MS', to: 'ENT', label: 'Troi' },
+        { from: 'MS', to: 'LD', label: 'Troi' },
+        { from: 'MS', to: 'GARG', label: 'Demona' },
+
+        // Brent Spiner
+        { from: 'BS', to: 'PIC', label: 'Data / Altan Soong' },
+        { from: 'BS', to: 'ENT', label: 'Arik Soong' },
+        { from: 'BS', to: 'GARG', label: 'Puck' },
+        { from: 'BS', to: 'ID4', label: 'Dr. Brackish Okun' },
+
+        // Gates McFadden
+        { from: 'GM', to: 'PIC', label: 'Crusher' },
+        { from: 'GM', to: 'PRO', label: 'Crusher' },
+
+        // Wil Wheaton
+        { from: 'WW', to: 'PIC', label: 'Wesley' },
+        { from: 'WW', to: 'PRO', label: 'Wesley' },
+        { from: 'WW', to: 'TBBT', label: 'Himself' },
+        { from: 'WW', to: 'SBM', label: 'Gordie Lachance' },
+
+        // Denise Crosby
+        { from: 'DC', to: 'TWD', label: 'Mary' },
+
+        // Colm Meaney
+        { from: 'CM', to: 'DS9', label: 'Chief O\'Brien' },
+        { from: 'CM', to: 'HOW', label: 'Thomas Durant' },
+
+        // Whoopi Goldberg
+        { from: 'WG', to: 'PIC', label: 'Guinan' },
+        { from: 'WG', to: 'SA', label: 'Deloris Van Cartier' },
+        { from: 'WG', to: 'GH', label: 'Oda Mae Brown' },
+
+        // John de Lancie
+        { from: 'JL', to: 'DS9', label: 'Q' },
+        { from: 'JL', to: 'VOY', label: 'Q' },
+        { from: 'JL', to: 'PIC', label: 'Q' },
+        { from: 'JL', to: 'LD', label: 'Q' },
+        { from: 'JL', to: 'BBAD', label: 'Donald Margolis' },
+        { from: 'JL', to: 'SG1', label: 'Col. Frank Simmons' },
+        { from: 'JL', to: 'MLP', label: 'Discord' },
+
+        // Majel Barrett
+        { from: 'MB', to: 'TOS', label: 'Nurse Chapel / Computer' },
+        { from: 'MB', to: 'DS9', label: 'Lwaxana Troi / Computer' },
+        { from: 'MB', to: 'VOY', label: 'Computer Voice' },
+        { from: 'MB', to: 'ENT', label: 'Computer Voice' },
+        { from: 'MB', to: 'EFC', label: 'Dr. Julianne Belman' },
+        { from: 'MB', to: 'BAB5', label: 'Lady Morella' },
+
+        // Diana Muldaur
+        { from: 'DM', to: 'TOS', label: 'Dr. Ann Mulhall' }
+    ];
+
+    // 2. Initialize Vis.js network once DOM is ready
+    window.onload = function () {
+        const nodes = new vis.DataSet(rawNodes);
+        const edges = new vis.DataSet(rawEdges);
+
+        const container = document.getElementById('network-container');
+        const data = { nodes: nodes, edges: edges };
+        
+        // LCARS Network Configuration
+        const options = {
+            nodes: {
+                borderWidth: 2,
+                borderWidthSelected: 4,
+                font: {
+                    color: '#ffffff',
+                    face: 'Antonio, sans-serif',
+                    size: 18,
+                    strokeWidth: 4,
+                    strokeColor: '#000000',
+                    vadjust: -2
+                },
+                shadow: { enabled: true, color: '#ff9900', size: 15, x: 0, y: 0 }
+            },
+            edges: {
+                width: 1.5,
+                color: { color: '#444444', highlight: '#ff9900', hover: '#ffcc99' },
+                font: {
+                    color: '#99ccff',
+                    size: 13,
+                    face: 'Antonio, sans-serif',
+                    strokeWidth: 4,
+                    strokeColor: '#000000',
+                    align: 'top'
+                },
+                smooth: { type: 'continuous' }
+            },
+            groups: {
+                actor: {
+                    shape: 'dot',
+                    size: 26,
+                    color: { background: '#ff9900', border: '#ffcc99', hover: { background: '#ffba00', border: '#ffffff' }, highlight: { background: '#ffba00', border: '#ffffff' } },
+                    font: { color: '#ffcc99' }
+                },
+                trek: {
+                    shape: 'diamond',
+                    size: 22,
+                    color: { background: '#99ccff', border: '#ffffff', hover: { background: '#baddff', border: '#ffffff' }, highlight: { background: '#baddff', border: '#ffffff' } },
+                    font: { color: '#99ccff' },
+                    shadow: { color: '#99ccff' }
+                },
+                other: {
+                    shape: 'square',
+                    size: 18,
+                    color: { background: '#cc6699', border: '#ff99cc', hover: { background: '#df85b2', border: '#ffffff' }, highlight: { background: '#df85b2', border: '#ffffff' } },
+                    font: { color: '#cc6699' },
+                    shadow: { color: '#cc6699' }
+                }
+            },
+            physics: {
+                solver: 'forceAtlas2Based',
+                forceAtlas2Based: {
+                    gravitationalConstant: -140,
+                    centralGravity: 0.01,
+                    springConstant: 0.05,
+                    springLength: 130,
+                    damping: 0.4,
+                    avoidOverlap: 0.3
+                },
+                stabilization: {
+                    enabled: true,
+                    iterations: 200,
+                    updateInterval: 25
+                }
+            },
+            interaction: {
+                hover: true,
+                hoverConnectedEdges: true,
+                selectConnectedEdges: true,
+                tooltipDelay: 100
+            }
+        };
+
+        // Initialize Network
+        window.network = new vis.Network(container, data, options);
+
+        // 3. Handle Interactions (LCARS Sidebar updating)
+        window.network.on("selectNode", function (params) {
+            const nodeId = params.nodes[0];
+            const node = nodes.get(nodeId);
+            
+            // Toggle panels
+            document.getElementById('default-panel').classList.add('hidden');
+            document.getElementById('info-panel').classList.remove('hidden');
+            document.getElementById('info-panel').classList.add('flex');
+            
+            // Set Node Title
+            document.getElementById('node-title').innerText = node.label;
+            
+            // Set Node Type Badge
+            const typeBadge = document.getElementById('node-type');
+            if (node.group === 'actor') {
+                typeBadge.innerText = 'Personnel File';
+                typeBadge.className = 'text-black bg-lcars-orange inline-block px-3 py-0.5 rounded-full text-sm mb-4 self-start font-bold uppercase';
+            } else if (node.group === 'trek') {
+                typeBadge.innerText = 'Starfleet Record';
+                typeBadge.className = 'text-black bg-lcars-blue inline-block px-3 py-0.5 rounded-full text-sm mb-4 self-start font-bold uppercase';
+            } else {
+                typeBadge.innerText = 'External Database';
+                typeBadge.className = 'text-black bg-lcars-pink inline-block px-3 py-0.5 rounded-full text-sm mb-4 self-start font-bold uppercase';
+            }
+            
+            // Get connections
+            const connectedEdges = edges.get().filter(e => e.from === nodeId || e.to === nodeId);
+            const detailsContainer = document.getElementById('node-details');
+            detailsContainer.innerHTML = ''; 
+            
+            // Adjust Subtitle
+            document.getElementById('list-title').innerText = node.group === 'actor' ? 'DATABASE CROSS-REFERENCES' : 'ASSIGNED PERSONNEL';
+            
+            connectedEdges.forEach(edge => {
+                const isFrom = edge.from === nodeId;
+                const otherNodeId = isFrom ? edge.to : edge.from;
+                const otherNode = nodes.get(otherNodeId);
+                
+                const listItem = document.createElement('li');
+                listItem.className = 'bg-[#1a1a1a] p-3 border-l-4 hover:bg-[#2a2a2a] transition-all cursor-pointer group flex flex-col gap-1';
+                
+                // Color formatting based on the other node's group
+                if(otherNode.group === 'actor') {
+                    listItem.classList.add('border-lcars-orange');
+                    var labelColor = 'text-lcars-orange';
+                } else if(otherNode.group === 'trek') {
+                    listItem.classList.add('border-lcars-blue');
+                    var labelColor = 'text-lcars-blue';
+                } else {
+                    listItem.classList.add('border-lcars-pink');
+                    var labelColor = 'text-lcars-pink';
+                }
+
+                // Focus graph on click
+                listItem.onclick = () => {
+                     window.network.selectNodes([otherNodeId]);
+                     window.network.focus(otherNodeId, { scale: 1.2, animation: true });
+                     window.network.emit("selectNode", { nodes: [otherNodeId] });
+                };
+                
+                let roleHtml = edge.label ? `<span class="text-xs text-gray-400 font-sans group-hover:text-white transition-colors">ROLE: ${edge.label.toUpperCase()}</span>` : '';
+                
+                listItem.innerHTML = `
+                    <span class="font-bold lcars-font text-lg tracking-wider ${labelColor}">${otherNode.label.toUpperCase()}</span>
+                    ${roleHtml}
+                `;
+                detailsContainer.appendChild(listItem);
+            });
+        });
+
+        // Handle deselecting nodes
+        window.network.on("deselectNode", function () {
+            document.getElementById('default-panel').classList.remove('hidden');
+            document.getElementById('info-panel').classList.add('hidden');
+            document.getElementById('info-panel').classList.remove('flex');
+        });
+    };
+</script>
+</body>
+</html>
